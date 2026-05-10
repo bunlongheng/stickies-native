@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+.DS_Store
+.env
+StickiesNative
+StickiesNative.app/
