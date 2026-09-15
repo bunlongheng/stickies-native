@@ -10,13 +10,32 @@ struct Note: Identifiable, Codable, Equatable {
     var type: String?
     var content: String?
     var icon: String?
+    /// Shared with anyone who has the link.
+    var isPublic: Bool?
+    /// Share is passcode-gated.
+    var locked: Bool?
+    /// Write-protected: the server refuses every edit AND the trash move (423).
+    var frozen: Bool?
+    /// Which app posted it, and from which machine - the same attribution the web
+    /// list badges each row with.
+    var createdByKey: String?
+    var createdByMachine: String?
+    /// When it was trashed - the server purges TRASH on its own 7 day schedule.
+    var trashedAt: String?
+    /// Survives the trash move, so it is how a restore finds its way home.
+    var folderId: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, type, content, icon
+        case id, title, type, content, icon, locked, frozen
         case folderName = "folder_name"
         case folderColor = "folder_color"
         case updatedAt = "updated_at"
         case createdAt = "created_at"
+        case isPublic = "is_public"
+        case createdByKey = "created_by_key"
+        case createdByMachine = "created_by_machine"
+        case trashedAt = "trashed_at"
+        case folderId = "folder_id"
     }
 
     /// The All view is ordered by created_at server-side, so show creation time -
@@ -67,6 +86,38 @@ struct Note: Identifiable, Codable, Equatable {
     /// Lowercased title + folder, computed once, so the search filter is a plain
     /// substring test rather than a locale-aware compare over every note per keystroke.
     var searchKey: String { (title + " " + (folderName ?? "")).lowercased() }
+
+    /// Days before the server purges this note for good, or nil when it is not in
+    /// TRASH. Matches the web app's "Nd left".
+    var daysLeft: Int? {
+        guard let stamp = trashedAt,
+              let date = Note.isoFractional.date(from: stamp) ?? Note.iso.date(from: stamp)
+        else { return nil }
+        let gone = date.addingTimeInterval(7 * 86_400)
+        return max(0, Int(gone.timeIntervalSinceNow / 86_400) + 1)
+    }
+
+    /// The badge for who posted this note, served by the notes app itself.
+    ///
+    /// Same order the web list uses: the work laptop's device icon wins outright, a
+    /// note written in the browser (no posting key, or the app's own key) shows the
+    /// owner's avatar, and everything else shows the posting app's icon.
+    var submitterIconURL: URL? {
+        if createdByMachine == "GV741W2732" {
+            return URL(string: Config.appBaseURL + "/machines/macbook-m2.png?v=3")
+        }
+        let key = (createdByKey ?? "").lowercased()
+        guard !key.isEmpty, key != "stickies" else {
+            return URL(string: Config.appBaseURL + "/avatar.png")
+        }
+        return URL(string: Config.appBaseURL + "/app-icons/\(key).png")
+    }
+
+    /// Two letters for when the icon 404s - the web falls back to a text chip too.
+    var submitterInitials: String {
+        let source = createdByKey ?? createdByMachine ?? "note"
+        return String(source.prefix(2)).uppercased()
+    }
 
     /// #RRGGBB from the folder, or nil when absent or malformed.
     var parsedColor: (r: Double, g: Double, b: Double)? {
